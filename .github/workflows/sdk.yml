@@ -13,3 +13,19 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - run: swift test
       - run: xcodebuild -scheme Signaloryx -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Compile an independent remote SPM consumer
+        run: |
+          mkdir -p .local/consumer/Sources/Consumer
+          cat > .local/consumer/Package.swift <<'SWIFT'
+          // swift-tools-version: 5.9
+          import PackageDescription
+          let package = Package(name: "Consumer", platforms: [.macOS(.v12)], dependencies: [
+              .package(url: "https://github.com/farazahmed1pk/signaloryx-ios.git", exact: "0.1.0")
+          ], targets: [.executableTarget(name: "Consumer", dependencies: [.product(name: "Signaloryx", package: "signaloryx-ios")])])
+          SWIFT
+          cat > .local/consumer/Sources/Consumer/main.swift <<'SWIFT'
+          import Signaloryx
+          let options = try SignaloryxOptions(dsn: "synthetic-consumer")
+          print(options)
+          SWIFT
+          swift build --package-path .local/consumer
