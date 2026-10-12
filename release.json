@@ -1,0 +1,6 @@
+{
+  "version": "0.1.0",
+  "product": "Signaloryx",
+  "minimumIOS": "13.0",
+  "swiftTools": "5.9"
+}
