@@ -1,5 +1,12 @@
 # Native SDK releases
 
+## 0.2.0 — native wireframe replay preview
+
+- Opt-in, sampled Android View and UIKit wireframe capture, with no text/image/pixel collection.
+- Five-frame batches through the existing persistent queue, beforeSend and consent purge.
+- Native replay protocol validation and dashboard playback/seek.
+- Android and iOS simulator/collector tests passed; physical-device performance and app privacy acceptance remain deployment checks.
+
 ## 0.1.0 — initial preview
 
 - Android API 23+ and Swift iOS 13+ explicit instrumentation.

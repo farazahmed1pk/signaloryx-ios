@@ -1,7 +1,61 @@
 import XCTest
+#if canImport(UIKit)
+import UIKit
+import WebKit
+#endif
 @testable import Signaloryx
 
 final class SignaloryxTests: XCTestCase {
+    #if canImport(UIKit)
+    @MainActor func testUIKitHierarchyNeverSerializesContentAndBlocksSubtrees() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let root = UIViewController(); window.rootViewController = root
+        root.view.frame = window.bounds; window.isHidden = false
+        let text = UITextField(frame: CGRect(x: 10, y: 10, width: 200, height: 40))
+        text.text = "SECRET_PASSWORD_SENTINEL"; text.isSecureTextEntry = true
+        text.accessibilityLabel = "SECRET_ACCESSIBILITY_SENTINEL"; root.view.addSubview(text)
+        let privateView = UIView(frame: CGRect(x: 10, y: 80, width: 200, height: 200))
+        let hiddenText = UILabel(frame: privateView.bounds); hiddenText.text = "SECRET_LABEL_SENTINEL"
+        privateView.addSubview(hiddenText); root.view.addSubview(privateView)
+        var payloads = [[String: Any]]()
+        let recorder = NativeReplay(window: window) { payloads.append($0) }
+        recorder.block(privateView)
+        for _ in 0..<5 { recorder.captureFrame(in: window) }; recorder.stop()
+        XCTAssertEqual(payloads.count, 1)
+        let json = String(data: try JSONSerialization.data(withJSONObject: payloads), encoding: .utf8)!
+        XCTAssertFalse(json.contains("SECRET_"))
+        let events = payloads[0]["events"] as! [[String: Any]]
+        let data = events[0]["data"] as! [String: Any]
+        let nodes = data["nodes"] as! [[String: Any]]
+        XCTAssertTrue(nodes.contains { $0["kind"] as? String == "input" })
+        XCTAssertTrue(nodes.contains { $0["kind"] as? String == "private" })
+        XCTAssertFalse(nodes.contains { $0["kind"] as? String == "text" })
+        // Export the actual UIKit collector output for backend contract validation.
+        print("SIGNALORYX_NATIVE_REPLAY_CONTRACT=" + (try JSONSerialization.data(withJSONObject: payloads[0])).base64EncodedString())
+    }
+    @MainActor func testUIKitStartHonorsConsentSamplingAndOptOut() throws {
+        let client = try Signaloryx(options: SignaloryxOptions(dsn: "fixture"), storage: nil) { _, _ in XCTFail("No replay should be sent") }
+        defer { client.close() }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        XCTAssertNil(client.startReplay(in: window, consentGranted: false, sampleRate: 1))
+        XCTAssertNil(client.startReplay(in: window, consentGranted: true, sampleRate: 0))
+        client.setEnabled(false)
+        XCTAssertNil(client.startReplay(in: window, consentGranted: true, sampleRate: 1))
+    }
+    #endif
+    func testNativeReplayUsesQueueEnvironmentAndOptOut() throws {
+        var options = try SignaloryxOptions(dsn: "fixture"); options.environment = "staging"
+        var sent = [[String: Any]]()
+        let client = try Signaloryx(options: options, storage: nil) { request, done in
+            XCTAssertEqual(request.url?.lastPathComponent, "replay")
+            sent.append(try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]); done(200, 0)
+        }
+        defer { client.close() }
+        client.captureReplayBatch(["duration_ms": 1000, "events": []]); flush(client)
+        XCTAssertEqual(sent.count, 1); XCTAssertEqual(sent[0]["environment"] as? String, "staging")
+        client.setEnabled(false); client.captureReplayBatch(["duration_ms": 1000, "events": []])
+        XCTAssertEqual(count(client), 0)
+    }
     private func flush(_ client: Signaloryx) { let done = expectation(description: "flush"); client.flush { done.fulfill() }; wait(for: [done], timeout: 5) }
     private func count(_ client: Signaloryx) -> Int {
         var count = -1; let done = expectation(description: "statistics")

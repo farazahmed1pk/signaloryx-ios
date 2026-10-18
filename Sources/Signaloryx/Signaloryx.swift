@@ -1,5 +1,8 @@
 import Foundation
 import CryptoKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct SignaloryxOptions {
     public let dsn: String
@@ -18,7 +21,7 @@ public struct SignaloryxOptions {
 }
 public enum SignaloryxError: Error { case invalidConfiguration, invalidDuration }
 
-/// Explicit handled-error instrumentation; no signal handlers or session recording.
+/// Explicit handled-error instrumentation with optional content-free UIKit wireframes.
 public final class Signaloryx {
     internal struct Item: Codable {
         let id: UUID
@@ -43,6 +46,35 @@ public final class Signaloryx {
     private let storage: URL?
     private let transport: Transport
     private let session: URLSession?
+    private let replayPermissionLock = NSLock()
+    private var replayAllowed = true
+    private var replayClosed = false
+    #if canImport(UIKit)
+    @MainActor private var replayRecorder: NativeReplay?
+    /// Start after consent on the main thread. Each call samples once; keep the returned recorder to block subtrees.
+    @MainActor public func startReplay(in window: UIWindow, consentGranted: Bool, sampleRate: Double = 0.1) -> NativeReplay? {
+        replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
+        guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
+              Double.random(in: 0..<1) < sampleRate else { return nil }
+        replayPermissionLock.lock()
+        let canRecord = replayAllowed
+        replayPermissionLock.unlock()
+        guard canRecord else { return nil }
+        let recorder = NativeReplay(window: window) { [weak self] payload in self?.captureReplayBatch(payload) }
+        replayRecorder = recorder
+        return recorder
+    }
+    @MainActor public func stopReplay() { replayRecorder?.stop(); replayRecorder = nil }
+    private func discardReplay() { DispatchQueue.main.async { self.replayRecorder?.stop(discard: true); self.replayRecorder = nil } }
+    #else
+    private func discardReplay() {}
+    #endif
+    internal func captureReplayBatch(_ payload: [String: Any]) {
+        worker.async {
+            var value = payload; value["environment"] = self.options.environment
+            self.enqueue("replay", payload: value)
+        }
+    }
 
     public convenience init(options: SignaloryxOptions) throws {
         let config = URLSessionConfiguration.ephemeral
@@ -70,7 +102,7 @@ public final class Signaloryx {
         self.options = options; self.storage = storage; self.transport = transport; self.session = session
         if let storage = storage, let data = try? Data(contentsOf: storage), data.count <= 70_000_000,
            let saved = try? JSONDecoder().decode([Item].self, from: data) {
-            items = Array(saved.filter { Date().timeIntervalSince($0.created) < 86400 && $0.payload.count <= 65536 && ["event", "log", "transaction"].contains($0.kind) }.prefix(options.maxQueueSize))
+            items = Array(saved.filter { Date().timeIntervalSince($0.created) < 86400 && $0.payload.count <= 65536 && ["event", "log", "transaction", "replay"].contains($0.kind) }.prefix(options.maxQueueSize))
         }
         let timer = DispatchSource.makeTimerSource(queue: worker)
         timer.schedule(deadline: .now() + 5, repeating: 5)
@@ -116,9 +148,14 @@ public final class Signaloryx {
     public func statistics(completion: @escaping (Int, Int) -> Void) { worker.async { completion(self.items.count, self.dropped) } }
     /// Purges stored payloads and scope. Requests already sent cannot be recalled.
     public func setEnabled(_ value: Bool) {
+        replayPermissionLock.lock(); replayAllowed = value && !replayClosed; replayPermissionLock.unlock()
         worker.async { self.enabled = value; if !value { self.items.removeAll(); self.breadcrumbs.removeAll(); self.tags.removeAll(); self.userID = nil; self.persist() } }
+        if !value { discardReplay() }
     }
-    public func close() { worker.async { self.closed = true; self.timer?.cancel(); self.persist(); self.session?.invalidateAndCancel() } }
+    public func close() {
+        replayPermissionLock.lock(); replayClosed = true; replayAllowed = false; replayPermissionLock.unlock()
+        discardReplay(); worker.async { self.closed = true; self.timer?.cancel(); self.persist(); self.session?.invalidateAndCancel() }
+    }
     private func persist() {
         guard let storage = storage, let data = try? JSONEncoder().encode(items) else { return }
         #if os(iOS)
