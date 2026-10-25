@@ -21,6 +21,9 @@ jobs:
           DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"].startswith("iPhone")))')
           xcodebuild -scheme Signaloryx -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO -resultBundlePath .local/contracts/ios-tests.xcresult test | tee .local/contracts/ios-simulator.log
           python3 -c 'import base64,pathlib,re; p=pathlib.Path(".local/contracts"); data=re.search(r"SIGNALORYX_NATIVE_REPLAY_CONTRACT=([A-Za-z0-9+/=]+)",(p/"ios-simulator.log").read_text()); assert data, "UIKit collector fixture missing"; (p/"ios-replay.json").write_bytes(base64.b64decode(data[1]))'
+      - name: Export SwiftUI collector contract
+        run: |
+          python3 -c 'import base64,pathlib,re; p=pathlib.Path(".local/contracts"); data=re.search(r"SIGNALORYX_SWIFTUI_REPLAY_CONTRACT=([A-Za-z0-9+/=]+)",(p/"ios-simulator.log").read_text()); assert data, "SwiftUI collector fixture missing"; (p/"ios-swiftui-replay.json").write_bytes(base64.b64decode(data[1]))'
       - name: Compile iOS simulator product
         run: xcodebuild -scheme Signaloryx -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
       - name: Compile an independent remote SPM consumer

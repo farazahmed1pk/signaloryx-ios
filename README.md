@@ -1,5 +1,43 @@
 # Signaloryx for iOS
 
+## 0.4.0 preview: display text and SwiftUI
+
+Use the official repository `https://github.com/farazahmed1pk/signaloryx-ios.git`
+and pin the exact `0.4.0` SPM tag; add the Signaloryx product and rebuild your app.
+Older 0.3.0 artifacts do not contain these APIs and remain unchanged.
+The implementation below changes privacy defaults: UILabel/UIButton display text is
+visible by default after consent. Inputs/passwords/WebViews remain protected. Mark
+customer-detail text/subtrees before the first sample with `maskText` / `block`.
+Use `unmaskText` / `unblock` only when content may be captured. Set
+`options.replayMaskAllText = true` to retain mask-all behavior with explicit UIKit
+public templates. Already-sent data cannot be recalled by changing a mask.
+
+SwiftUI (iOS 14+) uses supported wrappers/modifiers, without inspecting private
+SwiftUI internals:
+
+```swift
+import SwiftUI
+import Signaloryx
+
+VStack {
+    SignaloryxReplayText("Your shopping bag", fontSize: 20)
+    Text("Try again").signaloryxReplayText("Try again", button: true)
+    VStack {
+        SignaloryxReplayText(customerName)
+        TextField("Email", text: $email)
+    }.signaloryxReplayMask()
+}
+```
+
+Use the Text wrapper in shared display components, or attach the text modifier with
+that component's display string. Do not instrument editable values. A parent privacy
+modifier masks intersecting framework and embedded UIKit text. Masks can be toggled;
+composition updates change recorded text/bounds. Custom drawing, images, system and
+separate-window popups remain outside this wireframe capture. The v3 API/player is
+required for these v3 uploads. Physical-device app acceptance remains required.
+
+The following installation material describes the published **0.3.0** release.
+
 ## Recording integration
 
 SDK 0.3.0 preview offers opt-in UIKit wireframe capture, foreground-session timelines and explicitly approved static public label/button text. Follow the [session recording guidelines](https://signaloryx.com/docs/session-recording) and [native lifecycle reference](https://signaloryx.com/docs/mobile-integration). Start once per active scene on the main actor after consent, block private views, retain the recorder through ordinary background/foreground changes, and stop before account/window changes or sensitive workflows. Use `setEnabled(false)` to discard buffered and queued telemetry on opt-out. Test synthetic staging capture and physical-device overhead before production. SwiftUI internals, image pixels, unapproved/customer text, full video and automatic error-triggered recording are not supported.
