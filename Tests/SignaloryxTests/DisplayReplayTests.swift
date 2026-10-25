@@ -94,16 +94,20 @@ final class DisplayReplayTests: XCTestCase {
         XCTAssertFalse(try json(payloads).contains("SECRET_")); payloads.removeAll()
         model.text="Updated public label"; model.masked=false
         RunLoop.main.run(until:Date().addingTimeInterval(0.15)); window.layoutIfNeeded()
-        for _ in 0..<5 { recorder.captureFrame(in:window) }; recorder.stop()
+        for _ in 0..<5 { recorder.captureFrame(in:window) }
         XCTAssertTrue(try json(payloads).contains("Updated public label")); XCTAssertFalse(try json(payloads).contains("SECRET_"))
+        payloads.removeAll(); model.visible=false
+        RunLoop.main.run(until:Date().addingTimeInterval(0.15)); window.layoutIfNeeded()
+        for _ in 0..<5 { recorder.captureFrame(in:window) }; recorder.stop()
+        XCTAssertFalse(try json(payloads).contains("Updated public label"))
     }
 }
 @available(iOS 14.0, *)
-private final class ReplayModel: ObservableObject { @Published var text="SECRET_REUSED"; @Published var masked=true }
+private final class ReplayModel: ObservableObject { @Published var text="SECRET_REUSED"; @Published var masked=true; @Published var visible=true }
 @available(iOS 14.0, *)
 private struct ModelContent: View {
     @ObservedObject var model: ReplayModel
-    var body: some View { SignaloryxReplayText(model.text).frame(width:300,height:60).signaloryxReplayMask(model.masked) }
+    var body: some View { VStack { if model.visible { SignaloryxReplayText(model.text).frame(width:300,height:60).signaloryxReplayMask(model.masked) } } }
 }
 @available(iOS 14.0, *)
 private struct EmbeddedLabel: UIViewRepresentable {
