@@ -2,13 +2,13 @@
 
 ## Recording integration
 
-SDK 0.2.0 offers opt-in UIKit wireframe capture. Follow the [session recording guidelines](https://signaloryx.com/docs/session-recording) and [native lifecycle reference](https://signaloryx.com/docs/mobile-integration). Start once per active scene on the main actor after consent, block private views and stop on deactivation or sensitive workflows. Use `setEnabled(false)` to discard buffered and queued telemetry on opt-out. Test synthetic staging capture and physical-device overhead before production. SwiftUI internals, text/images, full video and automatic error-triggered recording are not supported.
+SDK 0.3.0 preview offers opt-in UIKit wireframe capture, foreground-session timelines and explicitly approved static public label/button text. Follow the [session recording guidelines](https://signaloryx.com/docs/session-recording) and [native lifecycle reference](https://signaloryx.com/docs/mobile-integration). Start once per active scene on the main actor after consent, block private views, retain the recorder through ordinary background/foreground changes, and stop before account/window changes or sensitive workflows. Use `setEnabled(false)` to discard buffered and queued telemetry on opt-out. Test synthetic staging capture and physical-device overhead before production. SwiftUI internals, image pixels, unapproved/customer text, full video and automatic error-triggered recording are not supported.
 
 Swift package for explicit errors, messages, breadcrumbs, logs and transactions. iOS 13+, Swift tools 5.9. Product: `Signaloryx`.
 
 ## Install with Swift Package Manager
 
-Official SDK-only repository: `https://github.com/farazahmed1pk/signaloryx-ios.git`. Version `0.2.0` is published as a preview; consult the [mobile integration guide](https://signaloryx.com/docs/mobile-integration) for publication status. In Xcode select **File → Add Package Dependencies**, enter that URL, select the published version and add the **Signaloryx** product to your app target. Do not use the private application repository.
+Official SDK-only repository: `https://github.com/farazahmed1pk/signaloryx-ios.git`. Version `0.3.0` is the session-timeline preview; consult the [mobile integration guide](https://signaloryx.com/docs/mobile-integration) for publication status. In Xcode select **File → Add Package Dependencies**, enter that URL, select the published version and add the **Signaloryx** product to your app target. Do not use the private application repository.
 
 Pin an exact reviewed release during the 0.x preview period. Commit `Package.resolved`. Updates are opt-in and require rebuilding, regression testing and releasing your app; dependency management does not hot-update installed applications.
 
@@ -33,9 +33,9 @@ Review CHANGELOG and migration notes, update the pinned version in a branch, ver
 
 New error events include device/OS, app version/build, locale/timezone and runtime context as tags. Logs include the same data in attributes and now carry the configured environment. Android adds resource screen dimensions/density and Java heap usage; iOS adds physical memory, power mode and thermal state (numeric OS enum). No hardware identifiers, personal device names, location or network identifiers are collected. Set `collectDeviceContext` to `false` to disable collection; `beforeSend` can remove individual fields before persistence. Caller tags/attributes take precedence. Existing events cannot be backfilled. SDK updates must be integrated into a new mobile app release.
 
-## iOS 0.3.0 session timeline (release candidate)
+## iOS 0.3.0 session timeline (preview)
 
-Version 0.3.0 sends bounded five-frame v2 batches with one stable session reference and retry-safe batch IDs. Simulator validation and publication are pending: use this candidate only in staging until the 0.3.0 SPM tag is published. The updated backend/player joins uploads into a session timeline. No migration beyond existing 021 is required. Published 0.2.0 downloads do not contain this change; rebuild and release your app after validation.
+Version 0.3.0 sends bounded five-frame v2 batches with one stable session reference and retry-safe batch IDs. Simulator tests (15 cases), iOS compilation and an independent remote SPM consumer passed. Pin the published 0.3.0 tag and validate your actual app on physical devices before rollout. The updated backend/player joins uploads into a session timeline. No migration beyond existing 021 is required. Published 0.2.0 downloads do not contain this change; rebuild and release your app after validation.
 
 Keep one recorder for the approved key window across navigation and ordinary foreground/background changes. Repeated valid starts return the same active recorder. Capture pauses while inactive/non-key/hidden or externally captured. Stop before account/window changes or sensitive workflows. No total-session timer is imposed by this collector; remove the older app-owned CappedReplay helper if full foreground-session capture is intended. Missing/background intervals remain gaps; this is UIKit geometry, not pixel video or full SwiftUI rendering.
 
