@@ -11,6 +11,8 @@ public struct SignaloryxOptions {
     public var release: String?
     public var maxQueueSize = 100
     public var collectDeviceContext = true
+    /// New captures show display labels by default. Inputs remain protected.
+    public var replayMaskAllText = false
     /// Applies to errors, logs and transactions before storage/network. Return nil to discard.
     public var beforeSend: ([String: Any]) -> [String: Any]? = { $0 }
     public init(dsn: String, baseURL: URL = URL(string: "https://www.signaloryx.com")!) throws {
@@ -64,7 +66,7 @@ public final class Signaloryx {
         replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
         guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
               Double.random(in: 0..<1) < sampleRate else { return nil }
-        let recorder = NativeReplay(window: window) { [weak self] payload in self?.captureReplayBatch(payload) }
+        let recorder = NativeReplay(window: window, maskAllText: options.replayMaskAllText) { [weak self] payload in self?.captureReplayBatch(payload) }
         replayRecorder = recorder
         return recorder
     }

@@ -1,5 +1,14 @@
 # Native SDK releases
 
+## Android 0.3.0 - session replay preview
+
+- Bounded View frame uploads join into one session timeline, with stable session references, idempotent batch IDs and Activity pause/resume continuity.
+- New `pauseReplay()` preserves the logical session across approved Activities; `stopReplay()` ends it. Repeated starts preserve sampling and the recorder.
+- `NativeReplay.allowPublicText(TextView, String)` and `maskText(View)` show reviewed static public labels/buttons and in-window popup messages; parent blocks, EditText/password and WebView protection remain enforced.
+- Opaque backgrounds and approved text color/font size improve wireframe recognition. No pixel video, automatic Compose, system/separate-window popup or input-value capture.
+- Hosted versioned AAR/source distribution. Maven Central publication remains pending. Robolectric/lint/consumer validation does not replace emulator/physical-device app acceptance.
+- Updated mobile PDF and platform examples include full-session lifecycle, consent revoke, public popup annotations and regression checklist. Earlier published Android/iOS artifacts remain unchanged.
+
 ## iOS 0.3.0 - session replay preview
 
 - Small UIKit frame batches now join into a foreground-session timeline with stable session references and idempotent batch IDs.
