@@ -1,5 +1,13 @@
 # Native SDK releases
 
+## iOS 0.3.0 - session replay candidate
+
+- Small UIKit frame batches now join into a foreground-session timeline with stable session references and idempotent batch IDs.
+- Explicit static public UILabel/UIButton annotations; input/private/WebView masking remains mandatory and blocked ancestors win.
+- Background flush/pause and repeated-start protection, with original-size and enlarged playback zoom.
+- Current device-context source is included in the new iOS package. No pixel video, automatic SwiftUI rendering or system-alert capture.
+- Simulator validation/publication pending. Android remains 0.2.0; previously published artifacts are unchanged.
+
 ## 0.2.0 — native wireframe replay preview
 
 - Opt-in, sampled Android View and UIKit wireframe capture, with no text/image/pixel collection.

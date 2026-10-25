@@ -1,5 +1,9 @@
 # Signaloryx for iOS
 
+## Recording integration
+
+SDK 0.2.0 offers opt-in UIKit wireframe capture. Follow the [session recording guidelines](https://signaloryx.com/docs/session-recording) and [native lifecycle reference](https://signaloryx.com/docs/mobile-integration). Start once per active scene on the main actor after consent, block private views and stop on deactivation or sensitive workflows. Use `setEnabled(false)` to discard buffered and queued telemetry on opt-out. Test synthetic staging capture and physical-device overhead before production. SwiftUI internals, text/images, full video and automatic error-triggered recording are not supported.
+
 Swift package for explicit errors, messages, breadcrumbs, logs and transactions. iOS 13+, Swift tools 5.9. Product: `Signaloryx`.
 
 ## Install with Swift Package Manager
@@ -24,3 +28,30 @@ See the [integration guide](https://signaloryx.com/docs/mobile-integration) for 
 
 
 Review CHANGELOG and migration notes, update the pinned version in a branch, verify payload redaction and delivery in a test project, exercise offline/restart/opt-out and physical-device lifecycle behavior, then ship through your normal app release process. Do not commit platform-owner credentials or provider keys to an app. Support: support@signaloryx.com.
+
+## Device context
+
+New error events include device/OS, app version/build, locale/timezone and runtime context as tags. Logs include the same data in attributes and now carry the configured environment. Android adds resource screen dimensions/density and Java heap usage; iOS adds physical memory, power mode and thermal state (numeric OS enum). No hardware identifiers, personal device names, location or network identifiers are collected. Set `collectDeviceContext` to `false` to disable collection; `beforeSend` can remove individual fields before persistence. Caller tags/attributes take precedence. Existing events cannot be backfilled. SDK updates must be integrated into a new mobile app release.
+
+## iOS 0.3.0 session timeline (release candidate)
+
+Version 0.3.0 sends bounded five-frame v2 batches with one stable session reference and retry-safe batch IDs. Simulator validation and publication are pending: use this candidate only in staging until the 0.3.0 SPM tag is published. The updated backend/player joins uploads into a session timeline. No migration beyond existing 021 is required. Published 0.2.0 downloads do not contain this change; rebuild and release your app after validation.
+
+Keep one recorder for the approved key window across navigation and ordinary foreground/background changes. Repeated valid starts return the same active recorder. Capture pauses while inactive/non-key/hidden or externally captured. Stop before account/window changes or sensitive workflows. No total-session timer is imposed by this collector; remove the older app-owned CappedReplay helper if full foreground-session capture is intended. Missing/background intervals remain gaps; this is UIKit geometry, not pixel video or full SwiftUI rendering.
+
+```swift
+// Main actor, after consent; retain the returned recorder.
+let recorder = telemetry.startReplay(in: window, consentGranted: true, sampleRate: 1) // staging
+recorder?.block(customerDetailsContainer)
+recorder?.block(paymentContainer)
+recorder?.allowPublicText(cartTitleLabel, text: "Your shopping bag")
+recorder?.allowPublicText(errorMessageLabel, text: "Unable to update your cart. Please try again.")
+// Before reusing this label for private content:
+recorder?.maskText(errorMessageLabel)
+// Consent withdrawal, without a preceding flush/normal stop:
+telemetry.setEnabled(false)
+```
+
+Only UILabel/UIButton accept public annotations. Supply reviewed static messages, never actual view text, names, order IDs or arbitrary server responses. Blocks always win. Inputs, WebViews, image pixels and unapproved labels remain private. Public strings are limited to 160 characters and a 4 KiB encoded per-frame budget. Geometry is bounded to 128 nodes/32 levels. Already uploaded text cannot be recalled by changing an annotation. Use app-owned UIKit popup labels; system alerts and separate windows are not traversed. New recorders need blocks/annotations before their first one-second sample.
+
+Validate a two-minute journey, quiet interval, scrolling, popup, background gap, repeated start, offline retry, opt-out, app restart, expiring sharing, deletion and tenant quota. Run simulator tests and measure physical-device overhead before release. Older recordings cannot recover omitted text.
