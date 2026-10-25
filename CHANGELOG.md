@@ -1,5 +1,16 @@
 # Native SDK releases
 
+## Android + iOS 0.4.0 - display text and supported framework adapters
+
+- Ordinary display labels/buttons are visible by default after consent. Mark customer-data labels/subtrees before the first sample; use replayMaskAllText=true to retain mask-all behavior.
+- Reversible mask/unmask and block/unblock controls; inputs/passwords, WebViews, protected windows and private ancestors stay protected. Privacy scans and Android registration overflow fail closed.
+- Optional signaloryx-compose module with BasicText wrapper, display-text, input and mask modifiers, using supported layout/composition APIs.
+- SwiftUI iOS 14+ Text wrapper and View modifiers, including private bounds over embedded UIKit content. UIKit remains iOS 13+.
+- Native protocol v3, bounded 256-node display wireframes; legacy v1/v2 playback preserved. Full-session grouping, consent revoke and retention behavior remain intact.
+- Android: 25 Robolectric/core/Compose tests plus lint/build passed. iOS: 20 simulator tests, product build and independent SPM consumer passed. Physical-device app privacy, lazy-list and performance acceptance remain required.
+- Hosted Android core/Compose AARs and source; official iOS SPM repository/tag. Android Maven Central publication remains pending. No image/pixel/system-window recording.
+- Updated platform and PDF guide with Compose, SwiftUI, masking, public popup, full-session lifecycle, revoke and test examples.
+
 ## Android 0.3.0 - session replay preview
 
 - Bounded View frame uploads join into one session timeline, with stable session references, idempotent batch IDs and Activity pause/resume continuity.

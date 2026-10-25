@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import XCTest
+import SwiftUI
 import UIKit
 import Signaloryx
 
@@ -17,6 +18,7 @@ final class ReplayCoordinator {
                 dsn: "YOUR_IOS_STAGING_DSN",
                 baseURL: URL(string: "https://signaloryx.com")!)
             options.environment = "staging"
+            options.replayMaskAllText = false // 0.4.0 default
             options.release = Bundle.main.infoDictionary?[
                 "CFBundleShortVersionString"] as? String
             telemetry = try Signaloryx(options: options)
@@ -71,6 +73,36 @@ replay.publicLabel(errorMessageLabel,
 replay.makePrivateAgain(errorMessageLabel)
 // Consent withdrawal callback on the main actor:
 replay.revoke()
+    }
+}
+@available(iOS 14.0, *)
+private struct FrameworkGuideExamples: View {
+    let customerName = "Synthetic customer"
+    let customerReference = "Synthetic private reference"
+    @State private var email = ""
+    var body: some View {
+
+// Inside an approved, consented SwiftUI view:
+VStack {
+  SignaloryxReplayText("Your shopping bag", fontSize: 20)
+  Text("Try again")
+    .signaloryxReplayText("Try again", button: true)
+  VStack {
+    SignaloryxReplayText(customerName)
+    TextField("Email", text: $email)
+  }.signaloryxReplayMask()
+}
+// Toggle .signaloryxReplayMask(isPrivate) from app policy.
+// Keep wrappers/modifiers on reused and asynchronous content.
+    }
+    var popup: some View {
+// SwiftUI overlay inside the captured approved window:
+VStack {
+  SignaloryxReplayText(
+    "Unable to update your cart. Please try again.")
+  SignaloryxReplayText(customerReference)
+    .signaloryxReplayMask()
+}
     }
 }
 #endif

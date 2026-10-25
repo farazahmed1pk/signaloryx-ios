@@ -1,9 +1,10 @@
 # Signaloryx for iOS
 
-## 0.4.0 candidate: display text and SwiftUI
+## 0.4.0 preview: display text and SwiftUI
 
-This source branch contains unreleased 0.4.0 changes. Do not pin an unpublished tag
-or assume the published 0.3.0 contains these APIs. Existing releases are unchanged.
+Use the official repository `https://github.com/farazahmed1pk/signaloryx-ios.git`
+and pin the exact `0.4.0` SPM tag; add the Signaloryx product and rebuild your app.
+Older 0.3.0 artifacts do not contain these APIs and remain unchanged.
 The implementation below changes privacy defaults: UILabel/UIButton display text is
 visible by default after consent. Inputs/passwords/WebViews remain protected. Mark
 customer-detail text/subtrees before the first sample with `maskText` / `block`.
@@ -33,7 +34,7 @@ that component's display string. Do not instrument editable values. A parent pri
 modifier masks intersecting framework and embedded UIKit text. Masks can be toggled;
 composition updates change recorded text/bounds. Custom drawing, images, system and
 separate-window popups remain outside this wireframe capture. The v3 API/player is
-required for these candidate uploads. Physical-device app acceptance remains required.
+required for these v3 uploads. Physical-device app acceptance remains required.
 
 The following installation material describes the published **0.3.0** release.
 
