@@ -6,7 +6,76 @@ import WebKit
 @testable import Signaloryx
 
 final class SignaloryxTests: XCTestCase {
+    func testDeviceContextCanBeDisabledBeforeStorage() throws {
+        var options = try SignaloryxOptions(dsn: "fixture")
+        options.collectDeviceContext = false
+        let checked = expectation(description: "beforeSend")
+        options.beforeSend = { payload in
+            XCTAssertNil((payload["tags"] as? [String: String])?["device.model"])
+            XCTAssertEqual(payload["environment"] as? String, "production")
+            checked.fulfill()
+            return nil
+        }
+        let client = try Signaloryx(options: options, storage: nil) { _, completion in completion(200, 0) }
+        client.captureMessage("test")
+        wait(for: [checked], timeout: 2)
+        client.close()
+    }
+    func testDeviceContextHasDiagnosticFieldsWithoutIdentifiers() {
+        let context = deviceMetadata()
+        XCTAssertNotNil(context["device.model"])
+        XCTAssertNotNil(context["os.version"])
+        XCTAssertNotNil(context["runtime.cpu_count"])
+        XCTAssertNil(context["device.name"])
+        XCTAssertNil(context["device.id"])
+        XCTAssertNil(context["device.idfv"])
+    }
+
     #if canImport(UIKit)
+    @MainActor func testFullSessionBatchesAndExplicitPublicLabels() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let root = UIViewController(); window.rootViewController = root
+        root.view.frame = window.bounds; window.isHidden = false
+        let label = UILabel(frame: CGRect(x: 10, y: 10, width: 300, height: 50))
+        label.text = "PRIVATE_ACTUAL_CUSTOMER_TEXT"; root.view.addSubview(label)
+        let input = UITextField(frame: CGRect(x: 10, y: 80, width: 300, height: 40))
+        input.text = "PRIVATE_INPUT"; root.view.addSubview(input)
+        let blocked = UIView(frame: CGRect(x: 10, y: 160, width: 300, height: 100))
+        let child = UILabel(frame: blocked.bounds); blocked.addSubview(child); root.view.addSubview(blocked)
+        var now: TimeInterval = 100
+        var payloads = [[String: Any]]()
+        let recorder = NativeReplay(window: window, clock: { now }) { payloads.append($0) }
+        recorder.allowPublicText(label, text: "Cart unavailable. Please retry.")
+        recorder.allowPublicText(input, text: "PRIVATE_INPUT_ANNOTATION")
+        recorder.allowPublicText(child, text: "PRIVATE_BLOCKED_ANNOTATION")
+        recorder.block(blocked)
+        for _ in 0..<70 { recorder.captureFrame(in: window); now += 1 }
+        recorder.maskText(label)
+        recorder.captureFrame(in: window)
+        recorder.stop()
+        XCTAssertGreaterThan(payloads.count, 10)
+        let first = payloads.first!, last = payloads.last!
+        XCTAssertEqual(first["session_id"] as? String, last["session_id"] as? String)
+        XCTAssertGreaterThan((last["batch_ended_at"] as! Double)-(first["batch_started_at"] as! Double), 60000)
+        XCTAssertEqual(Set(payloads.map { $0["batch_id"] as! String }).count, payloads.count)
+        for payload in payloads { XCTAssertLessThan(try JSONSerialization.data(withJSONObject: payload).count, 65536) }
+        let json = String(data: try JSONSerialization.data(withJSONObject: payloads), encoding: .utf8)!
+        XCTAssertTrue(json.contains("Cart unavailable"))
+        XCTAssertFalse(json.contains("PRIVATE_"))
+        let tail = String(data: try JSONSerialization.data(withJSONObject: last), encoding: .utf8)!
+        XCTAssertFalse(tail.contains("Cart unavailable"))
+    }
+    @MainActor func testRepeatedStartPreservesRecorderAndRevocationClosesIt() throws {
+        let client = try Signaloryx(options: SignaloryxOptions(dsn: "fixture"), storage: nil) { _, done in done(200, 0) }
+        defer { client.close() }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let first = client.startReplay(in: window, consentGranted: true, sampleRate: 1)
+        XCTAssertNotNil(first)
+        XCTAssertTrue(first === client.startReplay(in: window, consentGranted: true, sampleRate: 1))
+        client.setEnabled(false)
+        XCTAssertNil(client.startReplay(in: window, consentGranted: true, sampleRate: 1))
+        XCTAssertFalse(first!.isRecording(in: window))
+    }
     @MainActor func testUIKitHierarchyNeverSerializesContentAndBlocksSubtrees() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let root = UIViewController(); window.rootViewController = root

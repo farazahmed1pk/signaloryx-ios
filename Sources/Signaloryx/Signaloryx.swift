@@ -10,6 +10,7 @@ public struct SignaloryxOptions {
     public var environment = "production"
     public var release: String?
     public var maxQueueSize = 100
+    public var collectDeviceContext = true
     /// Applies to errors, logs and transactions before storage/network. Return nil to discard.
     public var beforeSend: ([String: Any]) -> [String: Any]? = { $0 }
     public init(dsn: String, baseURL: URL = URL(string: "https://www.signaloryx.com")!) throws {
@@ -21,7 +22,7 @@ public struct SignaloryxOptions {
 }
 public enum SignaloryxError: Error { case invalidConfiguration, invalidDuration }
 
-/// Explicit handled-error instrumentation with optional content-free UIKit wireframes.
+/// Explicit handled-error instrumentation with opt-in privacy-protected UIKit wireframes.
 public final class Signaloryx {
     internal struct Item: Codable {
         let id: UUID
@@ -53,13 +54,16 @@ public final class Signaloryx {
     @MainActor private var replayRecorder: NativeReplay?
     /// Start after consent on the main thread. Each call samples once; keep the returned recorder to block subtrees.
     @MainActor public func startReplay(in window: UIWindow, consentGranted: Bool, sampleRate: Double = 0.1) -> NativeReplay? {
-        replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
-        guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
-              Double.random(in: 0..<1) < sampleRate else { return nil }
         replayPermissionLock.lock()
         let canRecord = replayAllowed
         replayPermissionLock.unlock()
-        guard canRecord else { return nil }
+        guard canRecord else { replayRecorder?.stop(discard: true); replayRecorder = nil; return nil }
+        // Repeated screen/scene callbacks must not resample or split an active session.
+        if consentGranted, sampleRate.isFinite, sampleRate > 0, sampleRate <= 1,
+           let recorder = replayRecorder, recorder.isRecording(in: window) { return recorder }
+        replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
+        guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
+              Double.random(in: 0..<1) < sampleRate else { return nil }
         let recorder = NativeReplay(window: window) { [weak self] payload in self?.captureReplayBatch(payload) }
         replayRecorder = recorder
         return recorder
@@ -138,7 +142,15 @@ public final class Signaloryx {
         worker.async { self.enqueue("transaction", payload: ["name": String(name.prefix(1000)), "duration_ms": durationMs, "op": op, "status": status, "environment": self.options.environment]) }
     }
     private func enqueue(_ kind: String, payload: [String: Any]) {
-        guard enabled && !closed, let filtered = options.beforeSend(payload), JSONSerialization.isValidJSONObject(filtered),
+        var enriched = payload
+        enriched["environment"] = options.environment
+        if options.collectDeviceContext && ["event", "log"].contains(kind) {
+            let key = kind == "log" ? "attributes" : "tags"
+            var context = deviceMetadata()
+            if let existing = payload[key] as? [String: String] { context.merge(existing) { _, supplied in supplied } }
+            enriched[key] = context
+        }
+        guard enabled && !closed, let filtered = options.beforeSend(enriched), JSONSerialization.isValidJSONObject(filtered),
               let data = try? JSONSerialization.data(withJSONObject: filtered), data.count <= 65536 else { return }
         if items.count == options.maxQueueSize { items.removeFirst(); dropped += 1 }
         items.append(Item(id: UUID(), kind: kind, created: Date(), payload: data, attempts: 0)); persist()

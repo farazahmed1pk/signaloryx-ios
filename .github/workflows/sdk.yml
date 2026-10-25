@@ -11,16 +11,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - run: swift test
-      - run: xcodebuild -scheme Signaloryx -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - run: mkdir -p .local/contracts
+      - name: Swift package tests
+        env:
+          SDK_CONTRACT_OUTPUT: ${{ github.workspace }}/.local/contracts/ios.json
+        run: swift test
+      - name: Execute UIKit collector and guide examples on iOS simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"].startswith("iPhone")))')
+          xcodebuild -scheme Signaloryx -destination "platform=iOS Simulator,id=$DEVICE" CODE_SIGNING_ALLOWED=NO -resultBundlePath .local/contracts/ios-tests.xcresult test | tee .local/contracts/ios-simulator.log
+          python3 -c 'import base64,pathlib,re; p=pathlib.Path(".local/contracts"); data=re.search(r"SIGNALORYX_NATIVE_REPLAY_CONTRACT=([A-Za-z0-9+/=]+)",(p/"ios-simulator.log").read_text()); assert data, "UIKit collector fixture missing"; (p/"ios-replay.json").write_bytes(base64.b64decode(data[1]))'
+      - name: Compile iOS simulator product
+        run: xcodebuild -scheme Signaloryx -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
       - name: Compile an independent remote SPM consumer
         run: |
           mkdir -p .local/consumer/Sources/Consumer
-          cat > .local/consumer/Package.swift <<'SWIFT'
+          cat > .local/consumer/Package.swift <<SWIFT
           // swift-tools-version: 5.9
           import PackageDescription
           let package = Package(name: "Consumer", platforms: [.macOS(.v12)], dependencies: [
-              .package(url: "https://github.com/farazahmed1pk/signaloryx-ios.git", exact: "0.1.0")
+              .package(url: "https://github.com/farazahmed1pk/signaloryx-ios.git", revision: "$GITHUB_SHA")
           ], targets: [.executableTarget(name: "Consumer", dependencies: [.product(name: "Signaloryx", package: "signaloryx-ios")])])
           SWIFT
           cat > .local/consumer/Sources/Consumer/main.swift <<'SWIFT'
@@ -29,3 +39,9 @@ jobs:
           print(options)
           SWIFT
           swift build --package-path .local/consumer
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ios-validation
+          include-hidden-files: true
+          path: .local/contracts/
