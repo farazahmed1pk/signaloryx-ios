@@ -1,6 +1,10 @@
 # Signaloryx for iOS
 
-## Unpublished 0.5.0 candidate: duration limits
+## 0.5.0 preview: duration limits
+
+Pin exact version `0.5.0` from
+`https://github.com/farazahmed1pk/signaloryx-ios.git`, add the Signaloryx product,
+commit Package.resolved and rebuild the app.
 
 ```swift
 var options = try SignaloryxOptions(dsn: "PROJECT_DSN")
@@ -13,7 +17,7 @@ repeated starts do not restart it. Explicit stopReplay and a new consented start
 begins a new recording. Server 410 stops its matching recorder and drops that
 session's queued replay batches. Errors/logs remain independent. Lower tenant
 duration/size limits win. Retain consent revoke and SwiftUI masking integration.
-This requires rebuilding with 0.5.0 source; the published 0.4.0 package is unchanged.
+This requires rebuilding with 0.5.0; the published 0.4.0 package is unchanged.
 
 ## 0.4.0 preview: display text and SwiftUI
 
