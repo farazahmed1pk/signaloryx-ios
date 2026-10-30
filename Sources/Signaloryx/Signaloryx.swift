@@ -13,6 +13,7 @@ public struct SignaloryxOptions {
     public var collectDeviceContext = true
     /// New captures show display labels by default. Inputs remain protected.
     public var replayMaskAllText = false
+    public var replayMaxSessionDurationSeconds: TimeInterval = 900
     /// Applies to errors, logs and transactions before storage/network. Return nil to discard.
     public var beforeSend: ([String: Any]) -> [String: Any]? = { $0 }
     public init(dsn: String, baseURL: URL = URL(string: "https://www.signaloryx.com")!) throws {
@@ -60,13 +61,14 @@ public final class Signaloryx {
         let canRecord = replayAllowed
         replayPermissionLock.unlock()
         guard canRecord else { replayRecorder?.stop(discard: true); replayRecorder = nil; return nil }
+        if replayRecorder?.limitReached == true { return nil }
         // Repeated screen/scene callbacks must not resample or split an active session.
         if consentGranted, sampleRate.isFinite, sampleRate > 0, sampleRate <= 1,
            let recorder = replayRecorder, recorder.isRecording(in: window) { return recorder }
         replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
         guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
               Double.random(in: 0..<1) < sampleRate else { return nil }
-        let recorder = NativeReplay(window: window, maskAllText: options.replayMaskAllText) { [weak self] payload in self?.captureReplayBatch(payload) }
+        let recorder = NativeReplay(window: window, maskAllText: options.replayMaskAllText, maxDuration: options.replayMaxSessionDurationSeconds) { [weak self] payload in self?.captureReplayBatch(payload) }
         replayRecorder = recorder
         return recorder
     }
@@ -105,6 +107,7 @@ public final class Signaloryx {
 
     internal init(options: SignaloryxOptions, storage: URL?, session: URLSession? = nil, transport: @escaping Transport) throws {
         guard (1...1000).contains(options.maxQueueSize) else { throw SignaloryxError.invalidConfiguration }
+        guard options.replayMaxSessionDurationSeconds.isFinite, (60...14400).contains(options.replayMaxSessionDurationSeconds) else { throw SignaloryxError.invalidConfiguration }
         self.options = options; self.storage = storage; self.transport = transport; self.session = session
         if let storage = storage, let data = try? Data(contentsOf: storage), data.count <= 70_000_000,
            let saved = try? JSONDecoder().decode([Item].self, from: data) {
@@ -199,6 +202,19 @@ public final class Signaloryx {
                     self.persist(); completion?(); return
                 }
                 self.items.removeFirst(); if !(200...299).contains(status) { self.dropped += 1 }
+                if status==410 && item.kind=="replay",
+                   let payload=(try? JSONSerialization.jsonObject(with:item.payload)) as? [String:Any],
+                   let rejected=payload["session_id"] as? String {
+                    self.items.removeAll { queued in
+                        guard queued.kind=="replay",let body=(try? JSONSerialization.jsonObject(with:queued.payload)) as? [String:Any] else { return false }
+                        return body["session_id"] as? String == rejected
+                    }
+                    #if canImport(UIKit)
+                    DispatchQueue.main.async {
+                        if self.replayRecorder?.sessionID==rejected { self.replayRecorder?.stopAtLimit(discard:true) }
+                    }
+                    #endif
+                }
                 self.persist(); self.drain(completion: completion)
             }
         }

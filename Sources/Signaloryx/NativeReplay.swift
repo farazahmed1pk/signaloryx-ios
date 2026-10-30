@@ -14,14 +14,17 @@ import WebKit
     private let publicText = NSMapTable<UIView, NSString>(keyOptions: .weakMemory, valueOptions: .strongMemory)
     private let maskedText: NSHashTable<UIView> = .weakObjects()
     private let maskAllText: Bool
+    private let maxDuration: TimeInterval
+    internal private(set) var limitReached = false
+    internal var sessionID: String { session.replacingOccurrences(of:"-",with:"").lowercased() }
     private let origin = Date().timeIntervalSince1970 * 1000
     private let uptime: TimeInterval
     private let clock: () -> TimeInterval
     private var batchStart: Double = 0
     private var inactiveObserver: NSObjectProtocol?
 
-    internal init(window: UIWindow, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, maskAllText: Bool = false, submit: @escaping ([String: Any]) -> Void) {
-        self.window = window; self.submit = submit; self.clock = clock; self.uptime = clock(); self.maskAllText = maskAllText
+    internal init(window: UIWindow, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, maskAllText: Bool = false, maxDuration: TimeInterval = 900, submit: @escaping ([String: Any]) -> Void) {
+        self.window = window; self.submit = submit; self.clock = clock; self.uptime = clock(); self.maskAllText = maskAllText; self.maxDuration = maxDuration
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             // Foundation Timer invokes this on the main run loop where it was created.
             MainActor.assumeIsolated { self?.capture() }
@@ -56,12 +59,16 @@ import WebKit
         return String(format: "#%02X%02X%02X", Int(r*255), Int(g*255), Int(b*255))
     }
     private func capture() {
+        guard !limitReached else { return }
+        if clock()-uptime >= maxDuration { stopAtLimit(); return }
         guard let window = window else { stop(); return }
         guard UIApplication.shared.applicationState == .active, !window.isHidden,
               window.isKeyWindow, !window.screen.isCaptured else { flush(); return }
         captureFrame(in: window)
     }
     internal func captureFrame(in window: UIWindow) {
+        guard !limitReached else { return }
+        if clock()-uptime >= maxDuration { stopAtLimit(); return }
         let bounds = window.bounds
         guard bounds.width > 0, bounds.height > 0, bounds.width <= 10000, bounds.height <= 10000 else { return }
         var nodes = [[String: Any]]()
@@ -132,13 +139,15 @@ import WebKit
         guard !frames.isEmpty else { return }
         let last = frames.last?["timestamp_ms"] as? Double ?? 0
         // Suspension must not turn a stale frame into minutes of invented coverage.
-        let duration = min(60000, max(1000, min(last+1000, (clock()-started)*1000)))
+        let duration = min(max(0,(uptime+maxDuration-started)*1000),min(60000, max(1000, min(last+1000, (clock()-started)*1000))))
         submit(["session_id": session.replacingOccurrences(of: "-", with: "").lowercased(),
                 "batch_id": UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
                 "batch_started_at": batchStart, "batch_ended_at": batchStart+duration,
                 "duration_ms": duration, "events": frames])
         frames.removeAll()
     }
+    internal func stopAtLimit(discard: Bool = false) { limitReached=true; stop(discard:discard) }
+
     internal func stop(discard: Bool = false) {
         timer?.invalidate(); timer = nil
         if let inactiveObserver = inactiveObserver { NotificationCenter.default.removeObserver(inactiveObserver); self.inactiveObserver = nil }

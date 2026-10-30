@@ -1,5 +1,14 @@
 # Native SDK releases
 
+## Android + iOS 0.5.0 - recording safety limits
+
+- `replayMaxSessionDurationSeconds`: default 900 (15 minutes), range 60–14400. Monotonic elapsed time includes pauses; final batches are clipped at the cap.
+- Stops without automatic restart. Explicit `stopReplay()` and a new consented start creates a new recording.
+- Server HTTP 410 drops queued replay uploads and stops only its matching recorder. A delayed response cannot stop a newer session. Errors/logs remain independent.
+- Tenant duration/size caps require backend migration 022. Lower client/tenant limits win; masking and Compose/SwiftUI support remain unchanged.
+- Validation: 28 Android core/Compose tests with lint/build, 24 iOS simulator tests, simulator product and remote SPM consumer passed. Physical-device app acceptance remains required.
+- Released 0.4.0 tags, downloads and PDF remain unchanged.
+
 ## Android + iOS 0.4.0 - display text and supported framework adapters
 
 - Ordinary display labels/buttons are visible by default after consent. Mark customer-data labels/subtrees before the first sample; use replayMaskAllText=true to retain mask-all behavior.
