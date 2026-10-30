@@ -1,5 +1,20 @@
 # Signaloryx for iOS
 
+## Unpublished 0.5.0 candidate: duration limits
+
+```swift
+var options = try SignaloryxOptions(dsn: "PROJECT_DSN")
+options.replayMaxSessionDurationSeconds = 900 // 15 minutes; 60–14400
+let client = try Signaloryx(options: options)
+```
+
+Monotonic elapsed time includes background gaps. Capture stops at the limit;
+repeated starts do not restart it. Explicit stopReplay and a new consented start
+begins a new recording. Server 410 stops its matching recorder and drops that
+session's queued replay batches. Errors/logs remain independent. Lower tenant
+duration/size limits win. Retain consent revoke and SwiftUI masking integration.
+This requires rebuilding with 0.5.0 source; the published 0.4.0 package is unchanged.
+
 ## 0.4.0 preview: display text and SwiftUI
 
 Use the official repository `https://github.com/farazahmed1pk/signaloryx-ios.git`
