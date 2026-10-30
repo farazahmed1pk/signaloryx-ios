@@ -19,8 +19,7 @@ final class ReplayCoordinator {
                 baseURL: URL(string: "https://signaloryx.com")!)
             options.environment = "staging"
             options.replayMaxSessionDurationSeconds = 900
-            options.replayMaskAllText = false,
-            replayMaxSessionDurationSeconds = 900 // 15 min
+            options.replayMaskAllText = false // display text visible
             options.release = Bundle.main.infoDictionary?[
                 "CFBundleShortVersionString"] as? String
             telemetry = try Signaloryx(options: options)
