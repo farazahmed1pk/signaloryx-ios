@@ -13,6 +13,8 @@ public struct SignaloryxOptions {
     public var collectDeviceContext = true
     /// New captures show display labels by default. Inputs remain protected.
     public var replayMaskAllText = false
+    /// Opt-in actual app-window pixels. Mark private SwiftUI/ UIKit content before capture.
+    public var replayCaptureScreenshots = false
     public var replayMaxSessionDurationSeconds: TimeInterval = 900
     /// Applies to errors, logs and transactions before storage/network. Return nil to discard.
     public var beforeSend: ([String: Any]) -> [String: Any]? = { $0 }
@@ -68,7 +70,7 @@ public final class Signaloryx {
         replayRecorder?.stop(discard: !consentGranted); replayRecorder = nil
         guard sampleRate.isFinite, (0...1).contains(sampleRate), consentGranted, sampleRate > 0,
               Double.random(in: 0..<1) < sampleRate else { return nil }
-        let recorder = NativeReplay(window: window, maskAllText: options.replayMaskAllText, maxDuration: options.replayMaxSessionDurationSeconds) { [weak self] payload in self?.captureReplayBatch(payload) }
+        let recorder = NativeReplay(window: window, maskAllText: options.replayMaskAllText, maxDuration: options.replayMaxSessionDurationSeconds, captureScreenshots: options.replayCaptureScreenshots) { [weak self] payload in self?.captureReplayBatch(payload) }
         replayRecorder = recorder
         return recorder
     }
@@ -108,6 +110,7 @@ public final class Signaloryx {
     internal init(options: SignaloryxOptions, storage: URL?, session: URLSession? = nil, transport: @escaping Transport) throws {
         guard (1...1000).contains(options.maxQueueSize) else { throw SignaloryxError.invalidConfiguration }
         guard options.replayMaxSessionDurationSeconds.isFinite, (60...14400).contains(options.replayMaxSessionDurationSeconds) else { throw SignaloryxError.invalidConfiguration }
+        guard !(options.replayCaptureScreenshots && options.replayMaskAllText) else { throw SignaloryxError.invalidConfiguration }
         self.options = options; self.storage = storage; self.transport = transport; self.session = session
         if let storage = storage, let data = try? Data(contentsOf: storage), data.count <= 70_000_000,
            let saved = try? JSONDecoder().decode([Item].self, from: data) {

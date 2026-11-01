@@ -1,5 +1,28 @@
 # Native SDK releases
 
+## Android + iOS 0.6.0 - opt-in masked screenshot replay (preview)
+
+- `replayCaptureScreenshots=true` samples actual app-window pixels once per second.
+  Default capture remains compatible v3 wireframes. The deployed v4 API/player
+  is required; installed apps must rebuild and make new recordings.
+- Private/input geometry is covered before JPEG encoding, resizing, persistence
+  or upload. Apply explicit SwiftUI/Compose masks to customer text/images/editors.
+  No automatic PII detection inside pixels. Protected windows, WebViews and
+  unsupported surfaces remain excluded/masked; traversal overflow fails closed.
+- Adaptive JPEG quality/resizing, 1,200-pixel long edge and 44,000-byte frame
+  budget preserve existing queue, session duration, quota and deletion limits.
+  Frame intervals are retained; large missing gaps are not reconstructed.
+- `replayMaskAllText=true` is incompatible with screenshot mode and is rejected.
+  Retain wireframes when mask-all text behavior is required.
+- Native validation: Android core/Compose tests, native-graphics pixel masks,
+  lint, AARs and independent Maven resolution; foreground iOS simulator pixel
+  masks, SwiftUI/UIKit tests, package tests and simulator compilation passed.
+  Actual SDK payloads passed the backend models. Publication status must still
+  be checked per channel; physical-device app acceptance remains required.
+- Updated mobile integration/PDF examples cover screenshots, private geometry,
+  consent revoke, 15-minute limits, public popups and a testing checklist.
+- Published 0.5.0 artifacts remain unchanged.
+
 ## Android + iOS 0.5.0 - recording safety limits
 
 - `replayMaxSessionDurationSeconds`: default 900 (15 minutes), range 60–14400. Monotonic elapsed time includes pauses; final batches are clipped at the cap.

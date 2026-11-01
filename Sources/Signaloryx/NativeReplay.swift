@@ -2,7 +2,7 @@
 import UIKit
 import WebKit
 
-/// Display-text wireframes with explicit privacy controls. Never reads input values or pixels.
+/// Explicitly consented wireframes, or opt-in screenshots masked before encoding.
 @MainActor public final class NativeReplay {
     private weak var window: UIWindow?
     private var timer: Timer?
@@ -15,6 +15,7 @@ import WebKit
     private let maskedText: NSHashTable<UIView> = .weakObjects()
     private let maskAllText: Bool
     private let maxDuration: TimeInterval
+    private let captureScreenshots: Bool
     internal private(set) var limitReached = false
     internal var sessionID: String { session.replacingOccurrences(of:"-",with:"").lowercased() }
     private let origin = Date().timeIntervalSince1970 * 1000
@@ -23,8 +24,9 @@ import WebKit
     private var batchStart: Double = 0
     private var inactiveObserver: NSObjectProtocol?
 
-    internal init(window: UIWindow, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, maskAllText: Bool = false, maxDuration: TimeInterval = 900, submit: @escaping ([String: Any]) -> Void) {
+    internal init(window: UIWindow, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, maskAllText: Bool = false, maxDuration: TimeInterval = 900, captureScreenshots: Bool = false, submit: @escaping ([String: Any]) -> Void) {
         self.window = window; self.submit = submit; self.clock = clock; self.uptime = clock(); self.maskAllText = maskAllText; self.maxDuration = maxDuration
+        self.captureScreenshots = captureScreenshots
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             // Foundation Timer invokes this on the main run loop where it was created.
             MainActor.assumeIsolated { self?.capture() }
@@ -91,6 +93,17 @@ import WebKit
         }
         scan(window,depth:0,clip:bounds)
         let incomplete = depthExceeded || scanned>4096
+        if captureScreenshots {
+            // Fail closed if privacy traversal is incomplete or all-text masking was requested.
+            // SwiftUI display text cannot be discovered reliably through UIKit hierarchy APIs.
+            guard !incomplete, !maskAllText, !window.screen.isCaptured,
+                  window.isKeyWindow, !window.isHidden, UIApplication.shared.applicationState == .active else { return }
+            guard let image = screenshot(in:window, masks:masks) else { return }
+            appendFrame(["version":4,"capture_mode":"screenshot","platform":"ios","session_id":session,
+                         "width":bounds.width,"height":bounds.height,"image_mime":"image/jpeg",
+                         "image_base64":image.base64EncodedString(),"mask_count":masks.count])
+            return
+        }
         func hidden(_ rect: CGRect) -> Bool { incomplete || masks.contains { $0.intersects(rect) } }
         func visit(_ view: UIView, depth: Int, clip: CGRect) {
             guard depth <= 32, nodes.count < 256, !view.isHidden, view.alpha > 0 else { return }
@@ -126,20 +139,53 @@ import WebKit
         }
         if incomplete { nodes = [["x":0,"y":0,"width":bounds.width,"height":bounds.height,"kind":"private"]] }
         else { visit(window, depth: 0, clip: bounds) }
+        appendFrame(["version": 3, "text_mode": maskAllText || incomplete ? "masked" : "visible", "framework":hasFramework ? "mixed" : "uikit", "platform": "ios", "session_id": session,
+                     "width": bounds.width, "height": bounds.height, "nodes": nodes])
+    }
+    private func screenshot(in window: UIWindow, masks: [CGRect]) -> Data? {
+        let bounds = window.bounds
+        let scale = min(window.screen.scale, 1200 / max(bounds.width,bounds.height))
+        let format = UIGraphicsImageRendererFormat(); format.scale=1; format.opaque=true
+        let size = CGSize(width:ceil(bounds.width*scale),height:ceil(bounds.height*scale))
+        var complete = false
+        // Raw pixels exist only transiently in memory; only the redacted result is encoded.
+        let image = UIGraphicsImageRenderer(size:size,format:format).image { context in
+            context.cgContext.scaleBy(x:scale,y:scale)
+            context.cgContext.translateBy(x:-bounds.minX,y:-bounds.minY)
+            complete = window.drawHierarchy(in:bounds,afterScreenUpdates:false)
+            context.cgContext.setFillColor(UIColor.black.cgColor)
+            for mask in masks { context.cgContext.fill(mask.insetBy(dx:-4,dy:-4)) }
+        }
+        guard complete else { return nil }
+        for factor in [1.0,0.8,0.6] {
+            let candidate: UIImage
+            if factor == 1 { candidate=image }
+            else {
+                let smaller=CGSize(width:ceil(size.width*factor),height:ceil(size.height*factor))
+                candidate=UIGraphicsImageRenderer(size:smaller,format:format).image { _ in image.draw(in:CGRect(origin:.zero,size:smaller)) }
+            }
+            for quality in [0.75,0.55,0.35] {
+                if let encoded=candidate.jpegData(compressionQuality:quality), encoded.count <= 44000 { return encoded }
+            }
+        }
+        // Never upload oversized frames or bypass queue/storage limits.
+        return nil
+    }
+    private func appendFrame(_ data: [String:Any]) {
         let now = clock()
-        let data: [String: Any] = ["version": 3, "text_mode": maskAllText || incomplete ? "masked" : "visible", "framework":hasFramework ? "mixed" : "uikit", "platform": "ios", "session_id": session,
-                                  "width": bounds.width, "height": bounds.height, "nodes": nodes]
         let proposed: [String: Any] = ["type": "native_frame", "timestamp_ms": max(0, (now-started)*1000), "data": data]
-        if !frames.isEmpty && (now-started > 55 || ((try? JSONSerialization.data(withJSONObject: frames + [proposed]).count) ?? 65536) > 50000) { flush() }
+        if !frames.isEmpty && (captureScreenshots || now-started > 55 || ((try? JSONSerialization.data(withJSONObject: frames + [proposed]).count) ?? 65536) > 50000) { flush() }
         if frames.isEmpty { started = now; batchStart = origin + (now-uptime)*1000 }
         frames.append(["type": "native_frame", "timestamp_ms": (now-started)*1000, "data": data])
+        // Hold a screenshot until the next sample/stop so its actual observed
+        // interval is retained instead of uploading zero-duration fragments.
         if frames.count == 5 { flush() }
     }
     private func flush() {
         guard !frames.isEmpty else { return }
         let last = frames.last?["timestamp_ms"] as? Double ?? 0
         // Suspension must not turn a stale frame into minutes of invented coverage.
-        let duration = min(max(0,(uptime+maxDuration-started)*1000),min(60000, max(1000, min(last+1000, (clock()-started)*1000))))
+        let duration = min(max(0,(uptime+maxDuration-started)*1000),min(60000, max(captureScreenshots ? 0 : 1000, min(last+(captureScreenshots ? 2000 : 1000), (clock()-started)*1000))))
         submit(["session_id": session.replacingOccurrences(of: "-", with: "").lowercased(),
                 "batch_id": UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
                 "batch_started_at": batchStart, "batch_ended_at": batchStart+duration,

@@ -1,5 +1,46 @@
 # Signaloryx for iOS
 
+## 0.6.0 preview: opt-in masked screenshots
+
+Use the official `0.6.0` SPM tag once its release is published; check the platform
+release metadata for download availability. Pin the exact version and rebuild
+your app. A hosted source candidate alone does not establish SPM publication.
+
+The native release validation runs UIKit/SwiftUI pixel-mask tests in a foreground
+iOS simulator app, package tests and simulator compilation. Your mobile team must
+still validate its own app's masks, lifecycle and physical-device overhead.
+
+```swift
+var options = try SignaloryxOptions(dsn: "PROJECT_DSN",
+    baseURL: URL(string: "https://signaloryx.com")!)
+options.replayCaptureScreenshots = true
+options.replayMaskAllText = false
+options.replayMaxSessionDurationSeconds = 900
+// Construct/retain one client only after consent.
+let client = try Signaloryx(options: options)
+// Main actor, approved active app window:
+let replay = client.startReplay(in: window, consentGranted: true, sampleRate: 1)
+replay?.block(customerDetailsContainer)
+// Withdraw consent FIRST; already-sent content cannot be recalled:
+client.setEnabled(false)
+```
+
+For SwiftUI, keep `.signaloryxReplayMask()` on customer Text/Image containers,
+TextField, SecureField and custom editors before the first sample. Public Text,
+Image and in-window popup design need no replay-text wrappers in screenshot
+mode. No automatic PII recognition is performed inside images.
+
+Screenshots are sampled once per second, not continuous 30 fps video. Private
+regions are covered before JPEG encoding, resizing or queue storage. Frames
+are capped at a 1,200-pixel long edge and 44,000 bytes; oversized/incomplete
+capture fails closed. System keyboards/separate windows are excluded. Existing
+15-minute, tenant quota/retention and consent controls remain in force.
+`replayMaskAllText=true` is incompatible; leave screenshots off for wireframes.
+Old recordings cannot recover missing pixels. Validate native privacy, visual
+fidelity and performance on supported devices before production app rollout.
+
+Guide: https://signaloryx.com/docs/downloads/Signaloryx-Mobile-Integration-Guide-0.6.0.pdf
+
 ## 0.5.0 preview: duration limits
 
 Pin exact version `0.5.0` from

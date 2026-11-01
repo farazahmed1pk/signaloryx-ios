@@ -101,6 +101,68 @@ final class DisplayReplayTests: XCTestCase {
         for _ in 0..<5 { recorder.captureFrame(in:window) }; recorder.stop()
         XCTAssertFalse(try json(payloads).contains("Updated public label"))
     }
+    @available(iOS 14.0, *)
+    @MainActor func testScreenshotPreservesSwiftUIDesignAndMasksPrivatePixels() throws {
+        let window=host(VStack(spacing:0) {
+            Color.blue.frame(height:200)
+            Color.red.frame(height:200).signaloryxReplayMask()
+            TextField("Email",text:.constant("SECRET_INPUT")).signaloryxReplayMask()
+            Color.green
+        }.ignoresSafeArea())
+        defer { window.isHidden=true }
+        var payloads=[[String:Any]]()
+        let recorder=NativeReplay(window:window,captureScreenshots:true) { payloads.append($0) }
+        recorder.captureFrame(in:window); recorder.stop()
+        let payload=try XCTUnwrap(payloads.first)
+        let events=try XCTUnwrap(payload["events"] as? [[String:Any]])
+        let frame=try XCTUnwrap(events.first?["data"] as? [String:Any])
+        XCTAssertEqual(frame["version"] as? Int,4)
+        XCTAssertGreaterThanOrEqual(frame["mask_count"] as? Int ?? 0,2)
+        let encoded=try XCTUnwrap(frame["image_base64"] as? String)
+        let bytes=try XCTUnwrap(Data(base64Encoded:encoded))
+        XCTAssertLessThanOrEqual(bytes.count,44000)
+        let image=try XCTUnwrap(UIImage(data:bytes)?.cgImage)
+        let width=image.width, height=image.height
+        var pixels=[UInt8](repeating:0,count:width*height*4)
+        try pixels.withUnsafeMutableBytes { buffer in
+            let context=try XCTUnwrap(CGContext(data:buffer.baseAddress,width:width,height:height,bitsPerComponent:8,bytesPerRow:width*4,
+                                              space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(image,in:CGRect(x:0,y:0,width:width,height:height))
+        }
+        func pixel(_ pointY:CGFloat) -> ArraySlice<UInt8> {
+            let offset=(Int(pointY/window.bounds.height*CGFloat(height))*width+width/2)*4
+            return pixels[offset..<offset+3]
+        }
+        XCTAssertGreaterThan(Array(pixel(100))[2],200)
+        XCTAssertTrue(pixel(300).allSatisfy { $0<20 })
+        XCTAssertFalse(try json(payloads).contains("SECRET_INPUT"))
+        print("SIGNALORYX_SCREENSHOT_REPLAY_CONTRACT="+(try JSONSerialization.data(withJSONObject:payload)).base64EncodedString())
+    }
+    @available(iOS 14.0, *)
+    @MainActor func testScreenshotMaskAllFailsClosed() {
+        let window=host(Color.red); defer { window.isHidden=true }
+        var payloads=[[String:Any]]()
+        let recorder=NativeReplay(window:window,maskAllText:true,captureScreenshots:true) { payloads.append($0) }
+        recorder.captureFrame(in:window); recorder.stop()
+        XCTAssertTrue(payloads.isEmpty)
+    }
+    @available(iOS 14.0, *)
+    @MainActor func testScreenshotIntervalsAndDurationLimit() {
+        let window=host(Color.blue); defer { window.isHidden=true }
+        var now:TimeInterval=0
+        var payloads=[[String:Any]]()
+        let recorder=NativeReplay(window:window,clock:{now},maxDuration:60,captureScreenshots:true) { payloads.append($0) }
+        recorder.captureFrame(in:window);XCTAssertTrue(payloads.isEmpty)
+        now=1.1;recorder.captureFrame(in:window)
+        XCTAssertEqual(payloads.first?["duration_ms"] as? Double ?? -1,1100,accuracy:1)
+        now=2.2;recorder.captureFrame(in:window)
+        XCTAssertEqual(payloads.last?["duration_ms"] as? Double ?? -1,1100,accuracy:1)
+        now=60;recorder.captureFrame(in:window)
+        XCTAssertTrue(recorder.limitReached)
+        XCTAssertLessThanOrEqual(payloads.last?["duration_ms"] as? Double ?? .infinity,2000)
+        let count=payloads.count;now=61;recorder.captureFrame(in:window)
+        XCTAssertEqual(payloads.count,count)
+    }
 }
 @available(iOS 14.0, *)
 private final class ReplayModel: ObservableObject { @Published var text="SECRET_REUSED"; @Published var masked=true; @Published var visible=true }
